@@ -1,0 +1,3 @@
+﻿  pipelineAdvanced.cpp
+c:\users\sec\source\repos\pipelineadvanced\pipelineadvanced\pipelineadvanced.cpp(122): warning C4101: 'write_reg' :참조되지 않은 지역 변수입니다.
+  PipeLineAdvanced.vcxproj -> C:\Users\SEC\source\repos\PipeLineAdvanced\Debug\PipeLineAdvanced.exe
