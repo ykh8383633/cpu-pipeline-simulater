@@ -7,15 +7,15 @@
 
 struct Control
 {
-	unsigned char RegDst;
-	unsigned char Jump;
-	unsigned char Branch;
-	unsigned char MemRead;
-	unsigned char MemtoReg;
-	unsigned char ALUOp;
-	unsigned char MemWrite;
-	unsigned char ALUSrc;
-	unsigned char RegWrite;
+	unsigned char RegDst = 0;
+	unsigned char Jump = 0;
+	unsigned char Branch = 0;
+	unsigned char MemRead = 0;
+	unsigned char MemtoReg = 0;
+	unsigned char ALUOp = 0;
+	unsigned char MemWrite = 0;
+	unsigned char ALUSrc = 0;
+	unsigned char RegWrite = 0;
 };
 
 struct Reg_Read
@@ -50,6 +50,7 @@ unsigned int Shift_Left_2(unsigned int inst);
 unsigned int Add(unsigned int a, unsigned int b);
 unsigned int Mux(char signal, unsigned int a_0, unsigned int b_1);
 void print_reg_mem(void);
+void Initial_control();
 
 /**************************************/
 
@@ -86,7 +87,7 @@ int main(void)
 	/**************************************/
 	mem[40] = 3578;
 
-	if (!(fp = fopen(".//input_file//5.txt", "r")))
+	if (!(fp = fopen(".//input_file//3.txt", "r")))
 	{
 		printf("error: file open fail !!\n");
 		exit(1);
@@ -117,17 +118,51 @@ int main(void)
 	printf("\n ***** Processor START !!! ***** \n");
 
 	pc = 0;
-
-	unsigned int write_reg;
+	unsigned int mem_value = 0;
+	struct Control control_reg[4];
+	unsigned int if_id[7];
+	unsigned int id_ex[6], ex_mem[6], mem_wb[3];
+	///////////////////////////////////////////
 	while (pc < 64)
 	{
 		// pc +4
-		pc_add_4 = Add(pc, 4);  
+		pc_add_4 = Add(pc, 4);
 
 		// instruction fetch
 		inst = Inst_Fetch(pc);
 		printf("Instruction = %08x \n", inst);
 
+		////////// mem/wb 값 저장////////////
+		mem_wb[0] = mem_value; // 해당 메모리의 값
+		mem_wb[1] = ex_mem[1]; // ALU계산 결과 // mem/wb 에 저장
+		mem_wb[2] = ex_mem[3]; // 레지스터에 저장위치
+
+		////////// ex/mem 값 저장////////////
+		ex_mem[0] = (alu.ALU_result == 0);  // zero
+		ex_mem[1] = alu.ALU_result; // ALU계산 결과
+		ex_mem[2] = id_ex[1]; // 레지스터의 두번째 값 
+		ex_mem[3] = Mux(control_reg[1].RegDst, id_ex[3], id_ex[4]); // 레지스터의 저장 위치 계산 후 저장
+		ex_mem[4] = Add(id_ex[5], Shift_Left_2(id_ex[2])); // beq일 경우 이동 주소를 계산
+		ex_mem[5] = id_ex[5]; // 이 시점의 pc + 4
+		ex_mem[6] = id_ex[6]; // jump일 경우 이동 주소 저장
+
+		////////// id_ex 값 저장////////////
+		id_ex[0] = reg_read.Read_data_1;  // 레지스터 첫번째 값 저장
+		id_ex[1] = reg_read.Read_data_2; // 레지스터 두번째 값 저장
+		id_ex[2] = Sign_Extend(if_id[4]); // inst_15_0 을 sign_extend한 값 저장
+		id_ex[3] = if_id[2]; // inst_20_16 값 저장
+		id_ex[4] = if_id[3]; // inst_15_11 값 저장
+		id_ex[5] = if_id[6];  // 이 시점의 pc + 4
+		id_ex[6] = if_id[5];  // jump일 경우 이동 주소 저장
+
+		////////// ifi/id 값 저장////////////
+		if_id[0] = inst_31_26;//
+		if_id[1] = inst_25_21;//
+		if_id[2] = inst_20_16;// // instruction decode를 위해 명령어를 if/id에 저장
+		if_id[3] = inst_15_11;//
+		if_id[4] = inst_15_0; //
+		if_id[5] - inst_25_0; //
+		if_id[6] = pc_add_4;     // 이 시점의 pc + 4
 
 		// instruction decode
 		inst_31_26 = inst >> 26;
@@ -137,46 +172,48 @@ int main(void)
 		inst_15_0 = inst & 0x0000ffff;
 		inst_25_0 = inst & 0x03ffffff;
 
-		//printf("%x, %x, %x, %x, %x, %x", inst_31_26, inst_25_21, inst_20_16, inst_15_11, inst_15_0, inst_25_0);
-
-
-		
-
 
 		// register read
-		
-		Register_Read(inst_25_21, inst_20_16);
+
+
+		Register_Read(if_id[1], if_id[2]);
 
 		// create control signal
-		
-		Control_Signal(inst_31_26);  // op 코드를 입력해 컨트롤 값들을 설정
+
+		Control_Signal(if_id[0]);
+
+		////////////////////////////////
+		/*
+		control_reg[3] = mem/wb의 control값;
+		control_reg[2] = ex/mem의 control값;
+		control_reg[1] = id/ex의 control값;
+		*/
+		///////////////////////////////
+		control_reg[3] = control_reg[2];
+		control_reg[2] = control_reg[1];
+		control_reg[1] = control_reg[0];
+		control_reg[0] = control;
 
 		// create ALU control signal
-		
-		unsigned char ALU_control_signal = ALU_Control_Signal(control.ALUOp);
-		unsigned int ALU_input = Mux(control.ALUSrc, reg_read.Read_data_2, Sign_Extend(inst_15_0));
-		
+
+
+		unsigned char ALU_control_signal = ALU_Control_Signal(control_reg[1].ALUOp);
+		unsigned int ALU_input = Mux(control_reg[1].ALUSrc, id_ex[1], id_ex[2]);
+
 		// ALU
-		
-		ALU_func(ALU_control_signal, reg_read.Read_data_1, ALU_input);
-		
+
+		ALU_func(ALU_control_signal, id_ex[0], ALU_input);
+
+
+
 		// memory access
 
-		unsigned int mem_value = Memory_Access(control.MemWrite, control.MemRead, alu.ALU_result, reg_read.Read_data_2);
+
+		mem_value = Memory_Access(control_reg[2].MemWrite, control_reg[2].MemRead, ex_mem[1], ex_mem[2]);
+
 
 		// register write
-
-		Register_Write(control.RegWrite, Mux(control.RegDst, inst_20_16, inst_15_11), Mux(control.MemtoReg, alu.ALU_result, mem_value));
-
-		// next pc
-		if (alu.ALU_result == 0) {
-			alu.zero = 1;
-		}
-		else {
-			alu.zero = 0;
-		}
-		pc = Mux((control.Branch && alu.zero), pc_add_4, Add(pc_add_4, Shift_Left_2(ALU_input))); // alu값이 0이고 branch이면 현제값에 주소를 더해 계산한 주소로, 아니라면  pc+4로 pc 설정
-		pc = Mux(control.Jump, pc, (Shift_Left_2(inst_25_0) | ((pc_add_4 >> 28) << 28)));  // jump인 경우 해당 주소로 pc를 설정 
+		Register_Write(control_reg[3].RegWrite, mem_wb[2], Mux(control_reg[3].MemtoReg, mem_wb[1], mem_wb[0]));
 
 
 		total_cycle++;
@@ -185,6 +222,25 @@ int main(void)
 		/********************************/
 		printf("PC : %d \n", pc);
 		printf("Total cycle : %d \n", total_cycle);
+
+		if (total_cycle <= 1) {
+			pc = pc + 4;
+		}
+		else {
+			pc = Mux((control_reg[2].Branch && ex_mem[0]), pc_add_4, ex_mem[4]);
+			pc = Mux(control_reg[2].Jump, pc, (Shift_Left_2(ex_mem[6]) | ((ex_mem[5] >> 28) << 28)));
+		}
+
+		printf("=== ID/EX === \n");
+		printf("WB - RegWrite: %d, MemtoReg: %d\n", control_reg[0].RegWrite, control_reg[0].MemtoReg);
+		printf("M  - Branch  : %d, MemRead : %d, MemWrite: %d \n", control_reg[0].Branch, control_reg[0].MemRead, control_reg[0].MemWrite);
+		printf("EX - RegDst  : %d, ALUOp   : %d, ALUSrc  : %d \n", control_reg[0].RegDst, control_reg[0].ALUOp, control_reg[0].ALUSrc);
+		printf("=== EX/MEM === \n");
+		printf("WB - RegWrite: %d, MemtoReg: %d\n", control_reg[1].RegWrite, control_reg[1].MemtoReg);
+		printf("M  - Branch  : %d, MemRead : %d, MemWrite: %d \n", control_reg[1].Branch, control_reg[1].MemRead, control_reg[1].MemWrite);
+		printf("=== MEM/WB === \n");
+		printf("WB - RegWrite: %d, MemtoReg: %d \n", control_reg[2].RegWrite, control_reg[2].MemtoReg);
+
 		print_reg_mem();
 		/********************************/
 
@@ -198,47 +254,20 @@ int main(void)
 	return 0;
 }
 
-unsigned int Inst_Fetch(unsigned int read_addr)   ///////
+unsigned int Inst_Fetch(unsigned int read_addr)
 {
 	return mem[read_addr];
 }
 
-void Register_Read(unsigned int read_reg_1, unsigned int read_reg_2) //////
+void Register_Read(unsigned int read_reg_1, unsigned int read_reg_2)
 {
 	reg_read.Read_data_1 = reg[read_reg_1]; reg_read.Read_data_2 = reg[read_reg_2];
 }
 
-/*
-void Control_Signal(unsigned int opcode) /////
-{
-	if (opcode == 0) {  // R-type
-		control.ALUOp = 2;    //
-		control.RegDst = 1;   //
-		control.RegWrite = 1;  //
-	}
-	else if (opcode == 35) { // lw
-		control.ALUSrc = 1;  //
-		control.MemtoReg = 1;
-		control.RegWrite = 1;  //
-		control.MemRead = 1;  //
-	}
-	else if (opcode == 43) { // sw
-		control.ALUSrc = 1;
-		control.MemWrite = 1;
-	}
-	else if (opcode == 4) { // beq
-		control.Branch = 1;
-		control.ALUOp = 1;  // 
-	}
-	else if (opcode == 2) { // jump
-		control.Jump = 1;
-	}
-}*/
-
 
 void Control_Signal(unsigned int opcode)
-{
-	unsigned int r_format = (opcode == 0), lw = (opcode == 35), sw = (opcode == 43), beq = (opcode == 4);  //op 코드에 맞게 control 값 설정
+{   //op 코드에 맞게 control 값 설정
+	unsigned int r_format = (opcode == 0), lw = (opcode == 35), sw = (opcode == 43), beq = (opcode == 4);
 	control.Jump = (opcode == 2);
 	control.RegDst = r_format;
 	control.ALUSrc = lw || sw;
@@ -250,11 +279,14 @@ void Control_Signal(unsigned int opcode)
 	control.ALUOp = (r_format * 2) + beq;
 }
 
+
+
+
 unsigned char ALU_Control_Signal(unsigned char signal) //////
 {
-	unsigned char ALUop1 = signal << 7;   // ALUop 1의 자리수 추출
+	unsigned char ALUop1 = signal << 7;
 	ALUop1 = ALUop1 >> 7;
-	unsigned char ALUop2 = signal << 6;  // ALUop 2의 자리수 추출
+	unsigned char ALUop2 = signal << 6;
 	ALUop2 = ALUop2 >> 7;
 	if (ALUop1 == 0 && ALUop2 == 0) {  // lw일 경우
 		return 2;
@@ -280,10 +312,10 @@ void ALU_func(unsigned char ALU_control, unsigned int a, unsigned int b) //////
 
 unsigned int Memory_Access(unsigned char MemWrite, unsigned char MemRead, unsigned int addr, unsigned int write_data) //////////
 {
-	if (MemRead == 1) {   // lw이면 메모리 값을 읽어 반환
-		return mem[addr];   
+	if (MemRead == 1) {  // lw인 경우
+		return mem[addr];
 	}
-	if (MemWrite == 1) { // sw이면 메모리에 값을 저장
+	if (MemWrite == 1) {  // sw인 경우
 		mem[addr] = write_data;
 	}
 	return 0;
@@ -291,11 +323,10 @@ unsigned int Memory_Access(unsigned char MemWrite, unsigned char MemRead, unsign
 
 void Register_Write(unsigned char RegWrite, unsigned int Write_reg, unsigned int Write_data)
 {
-	if (RegWrite == 1) { 
+	if (RegWrite == 1) {
 		reg[Write_reg] = Write_data;
 	}
 }
-
 unsigned int Sign_Extend(unsigned int inst_16)
 {
 	unsigned int inst_32 = 0;
@@ -330,8 +361,6 @@ unsigned int Add(unsigned int a, unsigned int b)
 {
 	return a + b;  // 두 값을 더해 반환
 }
-
-
 
 void print_reg_mem(void)
 {
